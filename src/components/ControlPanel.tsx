@@ -3,6 +3,15 @@ import { TargetCategory } from '../types'
 
 type WorkflowName = 'scan' | 'audit' | 'score'
 
+interface ScanTarget {
+  id: string
+  city: string
+  country: string
+  osm_area: string
+  label: string
+  active: boolean
+}
+
 interface StatusMessage {
   kind: 'success' | 'error'
   text: string
@@ -21,51 +30,77 @@ async function triggerWorkflow(workflow: WorkflowName, inputs: Record<string, st
 
 export default function ControlPanel() {
   const [categories, setCategories] = useState<TargetCategory[]>([])
-  const [loadingCategories, setLoadingCategories] = useState(true)
+  const [scanTargets, setScanTargets] = useState<ScanTarget[]>([])
+  const [loadingOptions, setLoadingOptions] = useState(true)
   const [status, setStatus] = useState<StatusMessage | null>(null)
 
-  // Estado del formulario de radar
-  const [city, setCity] = useState('')
-  const [country, setCountry] = useState('')
-  const [osmArea, setOsmArea] = useState('')
+  // Radar: selección simple por dropdown
+  const [selectedTargetId, setSelectedTargetId] = useState<string>('')
   const [scanCategory, setScanCategory] = useState('')
   const [scanLoading, setScanLoading] = useState(false)
 
-  // Estado del formulario de auditoría
+  // Agregar ciudad nueva (solo cuando de verdad no está en la lista)
+  const [showAddTarget, setShowAddTarget] = useState(false)
+  const [newCity, setNewCity] = useState('')
+  const [newCountry, setNewCountry] = useState('')
+  const [newOsmArea, setNewOsmArea] = useState('')
+  const [addingTarget, setAddingTarget] = useState(false)
+
+  // Auditoría
   const [batchSize, setBatchSize] = useState('40')
   const [auditLoading, setAuditLoading] = useState(false)
 
   const [scoreLoading, setScoreLoading] = useState(false)
 
-  // Estado del formulario de nuevo rubro
+  // Agregar rubro nuevo
+  const [showAddCategory, setShowAddCategory] = useState(false)
   const [newKey, setNewKey] = useState('')
   const [newTag, setNewTag] = useState('')
   const [newLabel, setNewLabel] = useState('')
   const [addingCategory, setAddingCategory] = useState(false)
 
-  async function loadCategories() {
-    setLoadingCategories(true)
+  async function loadOptions() {
+    setLoadingOptions(true)
     try {
-      const response = await fetch('/api/categories')
-      const data = await response.json()
-      setCategories(data)
+      const [catRes, targetRes] = await Promise.all([
+        fetch('/api/categories'),
+        fetch('/api/scan-targets'),
+      ])
+      const catData = await catRes.json()
+      const targetData = await targetRes.json()
+      setCategories(catData)
+      setScanTargets(targetData)
+      if (targetData.length && !selectedTargetId) {
+        setSelectedTargetId(targetData[0].id)
+      }
     } catch {
-      setStatus({ kind: 'error', text: 'No se pudieron cargar los rubros.' })
+      setStatus({ kind: 'error', text: 'No se pudieron cargar las opciones.' })
     } finally {
-      setLoadingCategories(false)
+      setLoadingOptions(false)
     }
   }
 
   useEffect(() => {
-    loadCategories()
+    loadOptions()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   async function handleScan() {
+    const target = scanTargets.find((t) => t.id === selectedTargetId)
+    if (!target) {
+      setStatus({ kind: 'error', text: 'Elige una ciudad de la lista.' })
+      return
+    }
     setScanLoading(true)
     setStatus(null)
     try {
-      await triggerWorkflow('scan', { city, country, osm_area: osmArea, category: scanCategory })
-      setStatus({ kind: 'success', text: 'Radar disparado. Revisa la pestaña Actions en GitHub en unos segundos.' })
+      await triggerWorkflow('scan', {
+        city: target.city,
+        country: target.country,
+        osm_area: target.osm_area,
+        category: scanCategory,
+      })
+      setStatus({ kind: 'success', text: `Radar disparado para ${target.label}. Revisa Actions en GitHub en unos segundos.` })
     } catch (err) {
       setStatus({ kind: 'error', text: (err as Error).message })
     } finally {
@@ -100,19 +135,66 @@ export default function ControlPanel() {
   }
 
   async function toggleCategory(cat: TargetCategory) {
-    setCategories((prev) =>
-      prev.map((c) => (c.id === cat.id ? { ...c, active: !c.active } : c)),
-    )
+    setCategories((prev) => prev.map((c) => (c.id === cat.id ? { ...c, active: !c.active } : c)))
     try {
       const response = await fetch('/api/categories', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'toggle', id: cat.id, active: !cat.active }),
       })
-      if (!response.ok) throw new Error('No se pudo actualizar')
+      if (!response.ok) throw new Error()
     } catch {
       setStatus({ kind: 'error', text: `No se pudo actualizar ${cat.label_es}.` })
-      loadCategories()
+      loadOptions()
+    }
+  }
+
+  async function toggleTarget(target: ScanTarget) {
+    setScanTargets((prev) => prev.map((t) => (t.id === target.id ? { ...t, active: !t.active } : t)))
+    try {
+      const response = await fetch('/api/scan-targets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'toggle', id: target.id, active: !target.active }),
+      })
+      if (!response.ok) throw new Error()
+    } catch {
+      setStatus({ kind: 'error', text: `No se pudo actualizar ${target.label}.` })
+      loadOptions()
+    }
+  }
+
+  async function handleAddTarget() {
+    if (!newCity || !newCountry) {
+      setStatus({ kind: 'error', text: 'Completa al menos ciudad y país.' })
+      return
+    }
+    setAddingTarget(true)
+    setStatus(null)
+    try {
+      const response = await fetch('/api/scan-targets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'create',
+          city: newCity,
+          country: newCountry,
+          osm_area: newOsmArea || newCity,
+          label: `${newCity}, ${newCountry}`,
+        }),
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'No se pudo crear')
+      setStatus({ kind: 'success', text: `Ciudad "${newCity}" agregada.` })
+      setNewCity('')
+      setNewCountry('')
+      setNewOsmArea('')
+      setShowAddTarget(false)
+      await loadOptions()
+    } catch (err) {
+      setStatus({ kind: 'error', text: (err as Error).message })
+    } finally {
+      setAddingTarget(false)
     }
   }
 
@@ -135,12 +217,17 @@ export default function ControlPanel() {
       setNewKey('')
       setNewTag('')
       setNewLabel('')
-      loadCategories()
+      setShowAddCategory(false)
+      await loadOptions()
     } catch (err) {
       setStatus({ kind: 'error', text: (err as Error).message })
     } finally {
       setAddingCategory(false)
     }
+  }
+
+  if (loadingOptions) {
+    return <p className="font-mono text-xs text-parchmentDim">Cargando panel...</p>
   }
 
   return (
@@ -157,18 +244,19 @@ export default function ControlPanel() {
         </div>
       )}
 
-      <Section title="Radar de prospectos" description="Escanea una ciudad puntual, o deja los campos vacíos para usar scan-targets.json">
+      <Section title="Radar de prospectos" description="Elige una ciudad y un rubro, o deja el rubro en 'todos'">
         <div className="grid grid-cols-2 gap-3">
           <Field label="Ciudad">
-            <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Miami" />
+            <select value={selectedTargetId} onChange={(e) => setSelectedTargetId(e.target.value)}>
+              {scanTargets.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.label}
+                  {!t.active ? ' (pausada)' : ''}
+                </option>
+              ))}
+            </select>
           </Field>
-          <Field label="País">
-            <input value={country} onChange={(e) => setCountry(e.target.value)} placeholder="US" />
-          </Field>
-          <Field label="Área OSM (opcional)">
-            <input value={osmArea} onChange={(e) => setOsmArea(e.target.value)} placeholder="igual a la ciudad si se deja vacío" />
-          </Field>
-          <Field label="Rubro (opcional)">
+          <Field label="Rubro">
             <select value={scanCategory} onChange={(e) => setScanCategory(e.target.value)}>
               <option value="">Todos los activos</option>
               {categories.map((c) => (
@@ -180,6 +268,67 @@ export default function ControlPanel() {
           </Field>
         </div>
         <ActionButton onClick={handleScan} loading={scanLoading} label="Correr radar" />
+
+        <div className="border-t border-hairline pt-3">
+          {!showAddTarget ? (
+            <button
+              onClick={() => setShowAddTarget(true)}
+              className="font-mono text-xs text-parchmentDim underline underline-offset-2 hover:text-brass"
+            >
+              + agregar otra ciudad
+            </button>
+          ) : (
+            <div className="space-y-2">
+              <div className="grid grid-cols-3 gap-3">
+                <Field label="Ciudad">
+                  <input value={newCity} onChange={(e) => setNewCity(e.target.value)} placeholder="Miami" />
+                </Field>
+                <Field label="País (código)">
+                  <input value={newCountry} onChange={(e) => setNewCountry(e.target.value)} placeholder="US" />
+                </Field>
+                <Field label="Área OSM (opcional)">
+                  <input
+                    value={newOsmArea}
+                    onChange={(e) => setNewOsmArea(e.target.value)}
+                    placeholder="igual a la ciudad si se deja vacío"
+                  />
+                </Field>
+              </div>
+              <div className="flex gap-2">
+                <ActionButton onClick={handleAddTarget} loading={addingTarget} label="Guardar ciudad" />
+                <button
+                  onClick={() => setShowAddTarget(false)}
+                  className="font-mono text-xs text-parchmentDim hover:text-parchment"
+                >
+                  cancelar
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {scanTargets.length > 0 && (
+          <div className="border-t border-hairline pt-3">
+            <p className="mb-2 font-mono text-[11px] uppercase tracking-wider text-parchmentDim">
+              Ciudades guardadas
+            </p>
+            <div className="flex flex-col gap-2">
+              {scanTargets.map((t) => (
+                <div key={t.id} className="flex items-center justify-between rounded-sm border border-hairline px-3 py-2">
+                  <p className="text-sm text-parchment">{t.label}</p>
+                  <button
+                    onClick={() => toggleTarget(t)}
+                    className={`rounded-sm px-3 py-1 font-mono text-xs transition-colors ${
+                      t.active ? 'bg-signal/20 text-signal' : 'bg-hairline/40 text-parchmentDim'
+                    }`}
+                  >
+                    {t.active ? 'activa' : 'pausada'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </Section>
 
       <Section title="Auditoría de sitios" description="Verifica y mide los prospectos pendientes en lotes">
@@ -200,50 +349,57 @@ export default function ControlPanel() {
       </Section>
 
       <Section title="Rubros" description="Activa, pausa o agrega rubros que el radar debe escanear">
-        {loadingCategories ? (
-          <p className="font-mono text-xs text-parchmentDim">Cargando...</p>
-        ) : (
-          <div className="flex flex-col gap-2">
-            {categories.map((cat) => (
-              <div
-                key={cat.id}
-                className="flex items-center justify-between rounded-sm border border-hairline px-3 py-2"
+        <div className="flex flex-col gap-2">
+          {categories.map((cat) => (
+            <div key={cat.id} className="flex items-center justify-between rounded-sm border border-hairline px-3 py-2">
+              <div>
+                <p className="text-sm text-parchment">{cat.label_es}</p>
+                <p className="font-mono text-[11px] text-parchmentDim">{cat.category_key}</p>
+              </div>
+              <button
+                onClick={() => toggleCategory(cat)}
+                className={`rounded-sm px-3 py-1 font-mono text-xs transition-colors ${
+                  cat.active ? 'bg-signal/20 text-signal' : 'bg-hairline/40 text-parchmentDim'
+                }`}
               >
-                <div>
-                  <p className="text-sm text-parchment">{cat.label_es}</p>
-                  <p className="font-mono text-[11px] text-parchmentDim">{cat.category_key}</p>
-                </div>
+                {cat.active ? 'activo' : 'pausado'}
+              </button>
+            </div>
+          ))}
+        </div>
+
+        <div className="border-t border-hairline pt-3">
+          {!showAddCategory ? (
+            <button
+              onClick={() => setShowAddCategory(true)}
+              className="font-mono text-xs text-parchmentDim underline underline-offset-2 hover:text-brass"
+            >
+              + agregar rubro nuevo
+            </button>
+          ) : (
+            <div className="space-y-2">
+              <div className="grid grid-cols-3 gap-3">
+                <Field label="Clave (category_key)">
+                  <input value={newKey} onChange={(e) => setNewKey(e.target.value)} placeholder="law_firm" />
+                </Field>
+                <Field label="Tag OSM (key=value)">
+                  <input value={newTag} onChange={(e) => setNewTag(e.target.value)} placeholder="office=lawyer" />
+                </Field>
+                <Field label="Nombre visible">
+                  <input value={newLabel} onChange={(e) => setNewLabel(e.target.value)} placeholder="Bufetes legales" />
+                </Field>
+              </div>
+              <div className="flex gap-2">
+                <ActionButton onClick={handleAddCategory} loading={addingCategory} label="Guardar rubro" />
                 <button
-                  onClick={() => toggleCategory(cat)}
-                  className={`rounded-sm px-3 py-1 font-mono text-xs transition-colors ${
-                    cat.active
-                      ? 'bg-signal/20 text-signal'
-                      : 'bg-hairline/40 text-parchmentDim'
-                  }`}
+                  onClick={() => setShowAddCategory(false)}
+                  className="font-mono text-xs text-parchmentDim hover:text-parchment"
                 >
-                  {cat.active ? 'activo' : 'pausado'}
+                  cancelar
                 </button>
               </div>
-            ))}
-          </div>
-        )}
-
-        <div className="mt-4 border-t border-hairline pt-4">
-          <p className="mb-2 font-mono text-[11px] uppercase tracking-wider text-parchmentDim">
-            Agregar rubro nuevo
-          </p>
-          <div className="grid grid-cols-3 gap-3">
-            <Field label="Clave (category_key)">
-              <input value={newKey} onChange={(e) => setNewKey(e.target.value)} placeholder="law_firm" />
-            </Field>
-            <Field label="Tag OSM (key=value)">
-              <input value={newTag} onChange={(e) => setNewTag(e.target.value)} placeholder="office=lawyer" />
-            </Field>
-            <Field label="Nombre visible">
-              <input value={newLabel} onChange={(e) => setNewLabel(e.target.value)} placeholder="Bufetes legales" />
-            </Field>
-          </div>
-          <ActionButton onClick={handleAddCategory} loading={addingCategory} label="Agregar rubro" />
+            </div>
+          )}
         </div>
       </Section>
     </div>

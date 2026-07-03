@@ -1,5 +1,4 @@
 import { createClient } from '@supabase/supabase-js'
-import { readFileSync } from 'fs'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -97,9 +96,21 @@ async function resolveTargets() {
     return [{ city: adhocCity, country, osmArea }]
   }
 
-  // Corrida programada: usa la lista guardada en scan-targets.json
-  console.log('Modo programado: usando scripts/scan-targets.json')
-  return JSON.parse(readFileSync(new URL('./scan-targets.json', import.meta.url)))
+  // Corrida programada: usa las ciudades activas guardadas en Supabase (tabla scan_targets)
+  console.log('Modo programado: usando scan_targets activos en Supabase')
+  const { data, error } = await supabase.from('scan_targets').select('city, country, osm_area').eq('active', true)
+
+  if (error) {
+    console.error('Error cargando scan_targets:', error.message)
+    process.exit(1)
+  }
+
+  if (!data.length) {
+    console.log('No hay ciudades activas en scan_targets. Nada que escanear.')
+    process.exit(0)
+  }
+
+  return data.map((t) => ({ city: t.city, country: t.country, osmArea: t.osm_area }))
 }
 
 async function resolveCategories() {
