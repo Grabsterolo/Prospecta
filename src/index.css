@@ -24,16 +24,39 @@ input,
 select {
   background-color: #1b242e;
   border: 1px solid #2b3642;
-  border-radius: 2px;
-  padding: 0.4rem 0.6rem;
+  border-radius: 0.5rem;
+  padding: 0.55rem 0.75rem;
   color: #ede7d9;
   font-size: 0.875rem;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  width: 100%;
+}
+
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23C9974C' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.85rem center;
+  padding-right: 2.25rem;
+  cursor: pointer;
+}
+
+select:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+input:hover,
+select:hover {
+  border-color: #3a4855;
 }
 
 input:focus,
 select:focus {
   outline: none;
   border-color: #c9974c;
+  box-shadow: 0 0 0 3px rgba(201, 151, 76, 0.15);
 }
 
 input::placeholder {

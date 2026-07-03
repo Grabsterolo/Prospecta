@@ -60,7 +60,7 @@ export default function App() {
   return (
     <div className="min-h-screen">
       <TopBar totalProspects={prospects.length} lastScanLabel="—" />
-      <nav className="flex gap-1 border-b border-hairline px-8 py-3">
+      <nav className="flex gap-6 border-b border-hairline px-8">
         <TabButton active={view === 'prospects'} onClick={() => setView('prospects')}>
           Prospectos
         </TabButton>
@@ -70,7 +70,7 @@ export default function App() {
       </nav>
 
       {view === 'prospects' ? (
-        <div className="flex">
+        <div className="mx-auto flex max-w-7xl">
           <CategoryFilter
             categories={categories}
             activeKey={activeCategory}
@@ -85,7 +85,7 @@ export default function App() {
           </main>
         </div>
       ) : (
-        <main className="px-8 py-6">
+        <main className="px-8 py-8">
           <ControlPanel />
         </main>
       )}
@@ -105,8 +105,10 @@ function TabButton({
   return (
     <button
       onClick={onClick}
-      className={`rounded-sm px-3 py-1.5 font-mono text-xs transition-colors ${
-        active ? 'bg-panel2 text-brass' : 'text-parchmentDim hover:text-parchment'
+      className={`border-b-2 py-3 font-mono text-xs transition-colors ${
+        active
+          ? 'border-brass text-brass'
+          : 'border-transparent text-parchmentDim hover:text-parchment'
       }`}
     >
       {children}
