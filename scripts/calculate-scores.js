@@ -63,7 +63,18 @@ function scoreProspect(row) {
 }
 
 async function run() {
-  const { data: rows, error } = await supabase.from('audited_prospects').select('*')
+  const explicitIds = process.env.PROSPECT_IDS?.trim()
+  let query = supabase.from('audited_prospects').select('*')
+
+  if (explicitIds) {
+    const ids = explicitIds.split(',').map((id) => id.trim()).filter(Boolean)
+    console.log(`Modo selectivo: calificando ${ids.length} prospectos elegidos manualmente.`)
+    query = query.in('id', ids)
+  } else {
+    console.log('Modo completo: calificando todos los prospectos auditados.')
+  }
+
+  const { data: rows, error } = await query
 
   if (error) {
     console.error('Error cargando audited_prospects:', error.message)
@@ -71,7 +82,7 @@ async function run() {
   }
 
   if (!rows.length) {
-    console.log('No hay prospectos auditados todavía. Nada que calificar.')
+    console.log('No hay prospectos para calificar.')
     return
   }
 

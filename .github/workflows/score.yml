@@ -2,6 +2,11 @@ name: Calcular scores
 
 on:
   workflow_dispatch:
+    inputs:
+      prospect_ids:
+        description: 'IDs específicos a calificar, separados por coma (vacío = todos los auditados)'
+        required: false
+        type: string
   schedule:
     - cron: '30 14 * * *'
 
@@ -24,4 +29,5 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          PROSPECT_IDS: ${{ inputs.prospect_ids }}
         run: node scripts/calculate-scores.js
