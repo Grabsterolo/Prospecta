@@ -2,6 +2,23 @@ name: Radar de prospectos
 
 on:
   workflow_dispatch:
+    inputs:
+      city:
+        description: 'Ciudad a escanear (ej. Austin). Déjalo vacío para usar scan-targets.json'
+        required: false
+        type: string
+      country:
+        description: 'Código de país (ej. US, CR, MX)'
+        required: false
+        type: string
+      osm_area:
+        description: 'Nombre exacto del área en OpenStreetMap (normalmente igual a la ciudad)'
+        required: false
+        type: string
+      category:
+        description: 'category_key de un solo rubro (ej. dentist). Déjalo vacío para escanear todos los rubros activos'
+        required: false
+        type: string
   schedule:
     - cron: '0 13 * * 1'
 
@@ -24,4 +41,8 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ADHOC_CITY: ${{ inputs.city }}
+          ADHOC_COUNTRY: ${{ inputs.country }}
+          ADHOC_OSM_AREA: ${{ inputs.osm_area }}
+          ADHOC_CATEGORY: ${{ inputs.category }}
         run: node scripts/fetch-overpass.js
