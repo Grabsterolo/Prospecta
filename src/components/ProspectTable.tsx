@@ -1,5 +1,6 @@
 import { ProspectWithScore } from '../types'
 import SignalDial from './SignalDial'
+import RadarAnimation from './RadarAnimation'
 
 const offerLabels: Record<string, string> = {
   sitio_web: 'Sitio web',
@@ -24,8 +25,9 @@ interface ProspectTableProps {
 export default function ProspectTable({ prospects }: ProspectTableProps) {
   if (prospects.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-24 text-center">
-        <p className="font-display text-lg text-parchment">Sin señales todavía</p>
+      <div className="flex flex-col items-center justify-center py-12 text-center">
+        <RadarAnimation size={220} />
+        <p className="mt-4 font-display text-lg text-parchment">Sin señales todavía</p>
         <p className="mt-2 max-w-sm text-sm text-parchmentDim">
           Corre el radar para este rubro y ciudad para empezar a detectar prospectos.
         </p>

@@ -13,7 +13,7 @@ export default function TopBar({ totalProspects, lastScanLabel }: TopBarProps) {
 
       <div className="flex items-center gap-3 font-mono text-xs text-parchmentDim">
         <div className="flex items-center gap-2 rounded-full bg-panel2 px-3 py-1.5">
-          <span className="h-1.5 w-1.5 rounded-full bg-signal shadow-[0_0_6px_rgba(127,169,140,0.7)]" />
+          <span className="signal-pulse h-1.5 w-1.5 rounded-full bg-signal shadow-[0_0_6px_rgba(127,169,140,0.7)]" />
           <span>{totalProspects} prospectos en el radar</span>
         </div>
         <div className="rounded-full bg-panel2 px-3 py-1.5">última corrida: {lastScanLabel}</div>

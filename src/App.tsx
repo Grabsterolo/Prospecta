@@ -5,6 +5,7 @@ import TopBar from './components/TopBar'
 import CategoryFilter from './components/CategoryFilter'
 import ProspectTable from './components/ProspectTable'
 import ControlPanel from './components/ControlPanel'
+import RadarAnimation from './components/RadarAnimation'
 
 type View = 'prospects' | 'control'
 
@@ -78,7 +79,10 @@ export default function App() {
           />
           <main className="flex-1 px-8 py-6">
             {loading ? (
-              <p className="font-mono text-xs text-parchmentDim">Escaneando…</p>
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <RadarAnimation size={180} />
+                <p className="mt-4 font-mono text-xs text-parchmentDim">Escaneando…</p>
+              </div>
             ) : (
               <ProspectTable prospects={prospects} />
             )}

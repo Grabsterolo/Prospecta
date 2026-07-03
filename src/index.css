@@ -62,3 +62,83 @@ select:focus {
 input::placeholder {
   color: #4a555f;
 }
+
+@keyframes radar-sweep {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.radar-sweep {
+  animation: radar-sweep 4s linear infinite;
+}
+
+@keyframes radar-ping {
+  0% {
+    transform: scale(0.3);
+    opacity: 0;
+  }
+  40% {
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1.7);
+    opacity: 0;
+  }
+}
+
+.radar-ping {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: radar-ping 2.6s ease-out infinite;
+}
+
+@keyframes radar-blink {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.radar-blink {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: radar-blink 2.6s ease-in-out infinite;
+}
+
+@keyframes radar-link {
+  0% {
+    stroke-dashoffset: 40;
+    opacity: 0;
+  }
+  45% {
+    opacity: 0.45;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 0.12;
+  }
+}
+
+.radar-link {
+  animation: radar-link 3s ease-in-out infinite alternate;
+}
+
+@keyframes signal-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(127, 169, 140, 0.5);
+  }
+  100% {
+    box-shadow: 0 0 0 6px rgba(127, 169, 140, 0);
+  }
+}
+
+.signal-pulse {
+  animation: signal-pulse 1.8s ease-out infinite;
+}
