@@ -87,30 +87,57 @@ function mapElementToProspect(element, categoryKey, city, country) {
   }
 }
 
-async function run() {
-  const targets = JSON.parse(readFileSync(new URL('./scan-targets.json', import.meta.url)))
+async function resolveTargets() {
+  // Corrida puntual: viene de los inputs manuales del workflow (ciudad/país/área)
+  const adhocCity = process.env.ADHOC_CITY?.trim()
+  if (adhocCity) {
+    const country = process.env.ADHOC_COUNTRY?.trim() || null
+    const osmArea = process.env.ADHOC_OSM_AREA?.trim() || adhocCity
+    console.log(`Modo puntual: ${adhocCity}, ${country ?? 'sin país especificado'} (área OSM: ${osmArea})`)
+    return [{ city: adhocCity, country, osmArea }]
+  }
 
-  const { data: categories, error: catError } = await supabase
-    .from('target_categories')
-    .select('category_key, osm_tag')
-    .eq('active', true)
+  // Corrida programada: usa la lista guardada en scan-targets.json
+  console.log('Modo programado: usando scripts/scan-targets.json')
+  return JSON.parse(readFileSync(new URL('./scan-targets.json', import.meta.url)))
+}
 
-  if (catError) {
-    console.error('Error cargando target_categories:', catError.message)
+async function resolveCategories() {
+  const adhocCategory = process.env.ADHOC_CATEGORY?.trim()
+
+  let query = supabase.from('target_categories').select('category_key, osm_tag').eq('active', true)
+  if (adhocCategory) {
+    query = query.eq('category_key', adhocCategory)
+  }
+
+  const { data, error } = await query
+  if (error) {
+    console.error('Error cargando target_categories:', error.message)
     process.exit(1)
   }
 
-  if (!categories.length) {
-    console.log('No hay categorías activas. Nada que escanear.')
-    return
+  if (!data.length) {
+    if (adhocCategory) {
+      console.error(`No se encontró el rubro "${adhocCategory}" activo en target_categories.`)
+    } else {
+      console.log('No hay categorías activas. Nada que escanear.')
+    }
+    process.exit(adhocCategory ? 1 : 0)
   }
+
+  return data
+}
+
+async function run() {
+  const targets = await resolveTargets()
+  const categories = await resolveCategories()
 
   let totalFound = 0
   let totalUpserted = 0
 
   for (const target of targets) {
     for (const category of categories) {
-      console.log(`Escaneando ${category.category_key} en ${target.city}, ${target.country}...`)
+      console.log(`Escaneando ${category.category_key} en ${target.city}, ${target.country ?? '—'}...`)
 
       let elements = []
       try {
