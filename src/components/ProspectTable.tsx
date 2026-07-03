@@ -1,5 +1,6 @@
-import { ProspectWithScore } from '../types'
+import { OutreachStatus, ProspectWithScore } from '../types'
 import SignalDial from './SignalDial'
+import ContactLink from './ContactLink'
 
 const offerLabels: Record<string, string> = {
   sitio_web: 'Sitio web',
@@ -17,12 +18,22 @@ const statusLabels: Record<string, { label: string; color: string }> = {
   descartado: { label: 'Descartado', color: '#4A555F' },
 }
 
+const STATUS_OPTIONS: OutreachStatus[] = [
+  'nuevo',
+  'contactado',
+  'respondio',
+  'propuesta_enviada',
+  'cerrado',
+  'descartado',
+]
+
 interface ProspectTableProps {
   prospects: ProspectWithScore[]
   selectable?: boolean
   selectedIds?: Set<string>
   onToggleOne?: (id: string) => void
   onToggleAll?: () => void
+  onStatusChange?: (id: string, status: OutreachStatus) => void
 }
 
 export default function ProspectTable({
@@ -31,6 +42,7 @@ export default function ProspectTable({
   selectedIds,
   onToggleOne,
   onToggleAll,
+  onStatusChange,
 }: ProspectTableProps) {
   if (prospects.length === 0) {
     return (
@@ -54,7 +66,11 @@ export default function ProspectTable({
               <input type="checkbox" checked={allSelected} onChange={onToggleAll} />
             </th>
           )}
-          <th className="py-3 pl-2 font-normal">Señal</th>
+          <th className="py-3 pl-2 font-normal">
+            <span title="Qué tan urgente es contactar a este negocio (0 a 100, más alto es mejor oportunidad)">
+              Señal
+            </span>
+          </th>
           <th className="py-3 font-normal">Negocio</th>
           <th className="py-3 font-normal">Ciudad</th>
           <th className="py-3 font-normal">Oferta sugerida</th>
@@ -90,12 +106,27 @@ export default function ProspectTable({
                 )}
               </td>
               <td className="py-3">
-                <span className="font-mono text-xs" style={{ color: status.color }}>
-                  {status.label}
-                </span>
+                {onStatusChange ? (
+                  <select
+                    value={p.status}
+                    onChange={(e) => onStatusChange(p.id, e.target.value as OutreachStatus)}
+                    className="!w-auto !py-1 font-mono text-xs"
+                    style={{ color: status.color }}
+                  >
+                    {STATUS_OPTIONS.map((s) => (
+                      <option key={s} value={s}>
+                        {statusLabels[s].label}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <span className="font-mono text-xs" style={{ color: status.color }}>
+                    {status.label}
+                  </span>
+                )}
               </td>
               <td className="py-3 pr-2 font-mono text-xs text-parchmentDim tabular">
-                {p.phone ?? p.website ?? '—'}
+                <ContactLink phone={p.phone} website={p.website} />
               </td>
             </tr>
           )

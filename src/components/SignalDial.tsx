@@ -24,6 +24,11 @@ export default function SignalDial({ score, size = 44 }: SignalDialProps) {
       style={{ width: size, height: size }}
       role="img"
       aria-label={score === null ? 'Sin calcular' : `Señal ${score} de 100`}
+      title={
+        score === null
+          ? 'Todavía no se calcula la prioridad de este prospecto'
+          : `Prioridad de contacto: ${score} de 100 (más alto = más urgente)`
+      }
     >
       <svg width={size} height={size} className="-rotate-[135deg]">
         <circle

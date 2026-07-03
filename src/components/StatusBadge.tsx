@@ -28,7 +28,7 @@ export default function StatusBadge({ status, lastRunAt, htmlUrl }: StatusBadgeP
   return (
     <div className="flex items-center gap-2 font-mono text-[11px]">
       <span style={{ color: STATUS_COLOR[status] }}>{STATUS_LABEL[status]}</span>
-      <span className="text-parchmentDim">· {timeAgo(lastRunAt)}</span>
+      {lastRunAt && <span className="text-parchmentDim">· {timeAgo(lastRunAt)}</span>}
       {htmlUrl && (
         <a href={htmlUrl} target="_blank" rel="noreferrer" className="text-parchmentDim underline hover:text-brass">
           ver log

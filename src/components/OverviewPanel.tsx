@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { TargetCategory } from '../types'
 import SignalDial from './SignalDial'
 
 interface CategoryStat {
@@ -32,12 +33,22 @@ const OFFER_LABELS: Record<string, string> = {
   automatizacion: 'Automatización',
 }
 
-export default function OverviewPanel() {
+interface OverviewPanelProps {
+  categories: TargetCategory[]
+}
+
+export default function OverviewPanel({ categories }: OverviewPanelProps) {
   const [totals, setTotals] = useState({ detectados: 0, auditados: 0, calificados: 0 })
   const [byCategory, setByCategory] = useState<CategoryStat[]>([])
   const [byCity, setByCity] = useState<CityStat[]>([])
   const [topProspects, setTopProspects] = useState<TopProspect[]>([])
   const [loading, setLoading] = useState(true)
+  const [statsError, setStatsError] = useState(false)
+
+  const categoryLabel = useMemo(() => {
+    const map = new Map(categories.map((c) => [c.category_key, c.label_es]))
+    return (key: string) => map.get(key) ?? key
+  }, [categories])
 
   useEffect(() => {
     async function load() {
@@ -64,6 +75,7 @@ export default function OverviewPanel() {
       setByCategory(catRes.data ?? [])
       setByCity(cityRes.data ?? [])
       setTopProspects(topRes.data ?? [])
+      setStatsError(Boolean(catRes.error || cityRes.error))
       setLoading(false)
     }
     load()
@@ -83,25 +95,39 @@ export default function OverviewPanel() {
         <FunnelCard label="Calificados" value={totals.calificados} color="#C9974C" />
       </div>
 
+      {statsError && (
+        <p className="rounded-sm border border-alert/40 bg-alert/10 px-4 py-3 text-sm text-alert">
+          No se pudieron cargar los gráficos de "por rubro" y "por ciudad" en este momento.
+        </p>
+      )}
+
       <div className="grid grid-cols-2 gap-6">
         {/* Por rubro */}
         <div className="rounded-sm border border-hairline bg-panel p-5">
           <h2 className="mb-4 font-display text-base text-parchment">Por rubro</h2>
-          <div className="space-y-2">
-            {byCategory.map((c) => (
-              <BarRow key={c.category} label={c.category ?? '—'} value={c.total} max={maxCategory} />
-            ))}
-          </div>
+          {byCategory.length === 0 ? (
+            <p className="font-mono text-xs text-parchmentDim">Todavía no hay datos suficientes.</p>
+          ) : (
+            <div className="space-y-2">
+              {byCategory.map((c) => (
+                <BarRow key={c.category} label={categoryLabel(c.category) ?? '—'} value={c.total} max={maxCategory} />
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Por ciudad */}
         <div className="rounded-sm border border-hairline bg-panel p-5">
           <h2 className="mb-4 font-display text-base text-parchment">Por ciudad</h2>
-          <div className="space-y-2">
-            {byCity.map((c) => (
-              <BarRow key={`${c.city}-${c.country}`} label={`${c.city} (${c.country})`} value={c.total} max={maxCity} />
-            ))}
-          </div>
+          {byCity.length === 0 ? (
+            <p className="font-mono text-xs text-parchmentDim">Todavía no hay datos suficientes.</p>
+          ) : (
+            <div className="space-y-2">
+              {byCity.map((c) => (
+                <BarRow key={`${c.city}-${c.country}`} label={`${c.city} (${c.country})`} value={c.total} max={maxCity} />
+              ))}
+            </div>
+          )}
         </div>
       </div>
 

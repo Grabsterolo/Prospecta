@@ -1,58 +1,100 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { ProspectWithScore, TargetCategory } from '../types'
+import { OutreachStatus, ProspectWithScore, TargetCategory } from '../types'
 import ProspectTable from './ProspectTable'
-
-interface ScanTarget {
-  id: string
-  city: string
-  country: string
-  label: string
-}
 
 interface ScoredSectionProps {
   categories: TargetCategory[]
-  scanTargets: ScanTarget[]
 }
 
-export default function ScoredSection({ categories, scanTargets }: ScoredSectionProps) {
+const PAGE_LIMIT = 200
+
+export default function ScoredSection({ categories }: ScoredSectionProps) {
   const [filterCountry, setFilterCountry] = useState('')
   const [filterCity, setFilterCity] = useState('')
   const [filterCategory, setFilterCategory] = useState('')
   const [filterOffer, setFilterOffer] = useState('')
+  const [searchText, setSearchText] = useState('')
+  const [locationRows, setLocationRows] = useState<{ country: string | null; city: string | null }[]>([])
   const [prospects, setProspects] = useState<ProspectWithScore[]>([])
+  const [totalMatching, setTotalMatching] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [statusError, setStatusError] = useState<string | null>(null)
+
+  const loadAvailableFilters = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('prospect_overview')
+      .select('country, city')
+      .not('score_total', 'is', null)
+      .limit(2000)
+
+    if (error) {
+      console.error(error)
+      return
+    }
+    setLocationRows(data ?? [])
+  }, [])
 
   const loadProspects = useCallback(async () => {
     setLoading(true)
     let query = supabase
       .from('prospect_overview')
-      .select('*')
+      .select('*', { count: 'exact' })
       .not('score_total', 'is', null)
       .order('score_total', { ascending: false })
-      .limit(200)
+      .limit(PAGE_LIMIT)
 
     if (filterCountry) query = query.eq('country', filterCountry)
     if (filterCity) query = query.eq('city', filterCity)
     if (filterCategory) query = query.eq('category', filterCategory)
     if (filterOffer) query = query.eq('suggested_offer', filterOffer)
 
-    const { data, error } = await query
+    const { data, error, count } = await query
     if (error) {
       console.error(error)
       setProspects([])
+      setTotalMatching(0)
     } else {
       setProspects((data as ProspectWithScore[]) ?? [])
+      setTotalMatching(count ?? (data ?? []).length)
     }
     setLoading(false)
   }, [filterCountry, filterCity, filterCategory, filterOffer])
 
   useEffect(() => {
     loadProspects()
-  }, [loadProspects])
+    loadAvailableFilters()
+  }, [loadProspects, loadAvailableFilters])
 
-  const countries = Array.from(new Set(scanTargets.map((t) => t.country)))
-  const cities = scanTargets.filter((t) => !filterCountry || t.country === filterCountry)
+  const visibleProspects = useMemo(() => {
+    if (!searchText.trim()) return prospects
+    const needle = searchText.trim().toLowerCase()
+    return prospects.filter((p) => (p.name ?? '').toLowerCase().includes(needle))
+  }, [prospects, searchText])
+
+  const availableCountries = useMemo(
+    () => Array.from(new Set(locationRows.map((r) => r.country).filter((c): c is string => Boolean(c)))).sort(),
+    [locationRows],
+  )
+  const availableCities = useMemo(() => {
+    const pool = filterCountry ? locationRows.filter((r) => r.country === filterCountry) : locationRows
+    return Array.from(new Set(pool.map((r) => r.city).filter((c): c is string => Boolean(c)))).sort()
+  }, [locationRows, filterCountry])
+
+  async function handleStatusChange(prospectId: string, status: OutreachStatus) {
+    const previous = prospects
+    // Actualización optimista: se ve al instante, se revierte si falla el guardado.
+    setProspects((prev) => prev.map((p) => (p.id === prospectId ? { ...p, status } : p)))
+    setStatusError(null)
+    const { error } = await supabase
+      .from('outreach')
+      .insert({ prospect_id: prospectId, status, updated_at: new Date().toISOString() })
+    if (error) {
+      console.error(error)
+      setProspects(previous)
+      setStatusError('No se pudo guardar el cambio de estado. Intenta de nuevo.')
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -63,7 +105,7 @@ export default function ScoredSection({ categories, scanTargets }: ScoredSection
         </p>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
         <select
           value={filterCountry}
           onChange={(e) => {
@@ -72,7 +114,7 @@ export default function ScoredSection({ categories, scanTargets }: ScoredSection
           }}
         >
           <option value="">Todos los países</option>
-          {countries.map((c) => (
+          {availableCountries.map((c) => (
             <option key={c} value={c}>
               {c}
             </option>
@@ -80,9 +122,9 @@ export default function ScoredSection({ categories, scanTargets }: ScoredSection
         </select>
         <select value={filterCity} onChange={(e) => setFilterCity(e.target.value)}>
           <option value="">Todas las ciudades</option>
-          {cities.map((t) => (
-            <option key={t.id} value={t.city}>
-              {t.city}
+          {availableCities.map((city) => (
+            <option key={city} value={city}>
+              {city}
             </option>
           ))}
         </select>
@@ -101,12 +143,26 @@ export default function ScoredSection({ categories, scanTargets }: ScoredSection
           <option value="asistente_ia">Asistente IA</option>
           <option value="automatizacion">Automatización</option>
         </select>
+        <input
+          value={searchText}
+          onChange={(e) => setSearchText(e.target.value)}
+          placeholder="Buscar por nombre..."
+        />
       </div>
+
+      <p className="font-mono text-[11px] uppercase tracking-wider text-parchmentDim">
+        {visibleProspects.length} calificados
+        {totalMatching > prospects.length ? ` (mostrando los primeros ${prospects.length} de ${totalMatching})` : ''}
+      </p>
+
+      {statusError && (
+        <p className="rounded-sm border border-alert/40 bg-alert/10 px-4 py-3 text-sm text-alert">{statusError}</p>
+      )}
 
       {loading ? (
         <p className="font-mono text-xs text-parchmentDim">Cargando...</p>
       ) : (
-        <ProspectTable prospects={prospects} />
+        <ProspectTable prospects={visibleProspects} onStatusChange={handleStatusChange} />
       )}
     </div>
   )

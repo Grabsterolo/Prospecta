@@ -1,16 +1,9 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { TargetCategory } from '../types'
 import { useWorkflow } from '../lib/useWorkflow'
 import StatusBadge from './StatusBadge'
 import { timeAgo } from '../lib/time'
-
-interface ScanTarget {
-  id: string
-  city: string
-  country: string
-  label: string
-}
 
 interface AuditedProspect {
   id: string
@@ -25,44 +18,73 @@ interface AuditedProspect {
 
 interface AuditedSectionProps {
   categories: TargetCategory[]
-  scanTargets: ScanTarget[]
 }
 
-export default function AuditedSection({ categories, scanTargets }: AuditedSectionProps) {
+const PAGE_LIMIT = 200
+
+export default function AuditedSection({ categories }: AuditedSectionProps) {
   const [filterCity, setFilterCity] = useState('')
   const [filterCategory, setFilterCategory] = useState('')
+  const [searchText, setSearchText] = useState('')
+  const [availableCities, setAvailableCities] = useState<string[]>([])
   const [prospects, setProspects] = useState<AuditedProspect[]>([])
+  const [totalMatching, setTotalMatching] = useState(0)
   const [loading, setLoading] = useState(true)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
   const score = useWorkflow('score')
 
+  const loadAvailableCities = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('prospect_overview')
+      .select('city')
+      .eq('audited', true)
+      .not('city', 'is', null)
+      .limit(1000)
+
+    if (error) {
+      console.error(error)
+      return
+    }
+    const unique = Array.from(new Set((data ?? []).map((r) => r.city as string))).sort()
+    setAvailableCities(unique)
+  }, [])
+
   const loadProspects = useCallback(async () => {
     setLoading(true)
     let query = supabase
       .from('prospect_overview')
-      .select('id, name, city, category, audit_date, audit_has_website, pagespeed_score, has_ssl')
+      .select('id, name, city, category, audit_date, audit_has_website, pagespeed_score, has_ssl', { count: 'exact' })
       .eq('audited', true)
       .is('score_total', null)
       .order('audit_date', { ascending: false })
-      .limit(200)
+      .limit(PAGE_LIMIT)
 
     if (filterCity) query = query.eq('city', filterCity)
     if (filterCategory) query = query.eq('category', filterCategory)
 
-    const { data, error } = await query
+    const { data, error, count } = await query
     if (error) {
       console.error(error)
       setProspects([])
+      setTotalMatching(0)
     } else {
       setProspects(data ?? [])
+      setTotalMatching(count ?? (data ?? []).length)
     }
     setLoading(false)
   }, [filterCity, filterCategory])
 
   useEffect(() => {
     loadProspects()
-  }, [loadProspects])
+    loadAvailableCities()
+  }, [loadProspects, loadAvailableCities])
+
+  const visibleProspects = useMemo(() => {
+    if (!searchText.trim()) return prospects
+    const needle = searchText.trim().toLowerCase()
+    return prospects.filter((p) => (p.name ?? '').toLowerCase().includes(needle))
+  }, [prospects, searchText])
 
   function toggleOne(id: string) {
     setSelectedIds((prev) => {
@@ -74,19 +96,25 @@ export default function AuditedSection({ categories, scanTargets }: AuditedSecti
 
   function toggleAll() {
     setSelectedIds((prev) => {
-      const allSelected = prospects.length > 0 && prospects.every((p) => prev.has(p.id))
-      return allSelected ? new Set() : new Set(prospects.map((p) => p.id))
+      const allSelected = visibleProspects.length > 0 && visibleProspects.every((p) => prev.has(p.id))
+      return allSelected ? new Set() : new Set(visibleProspects.map((p) => p.id))
     })
   }
 
   function scoreSelected() {
     if (selectedIds.size === 0) return
-    score.trigger({ prospect_ids: Array.from(selectedIds).join(',') }, loadProspects)
+    score.trigger({ prospect_ids: Array.from(selectedIds).join(',') }, () => {
+      loadProspects()
+      loadAvailableCities()
+    })
     setSelectedIds(new Set())
   }
 
   function scoreAll() {
-    score.trigger({}, loadProspects)
+    score.trigger({}, () => {
+      loadProspects()
+      loadAvailableCities()
+    })
   }
 
   return (
@@ -97,15 +125,15 @@ export default function AuditedSection({ categories, scanTargets }: AuditedSecti
           Ya se midió su presencia digital. Elige a cuáles calcularles prioridad y oferta sugerida.
         </p>
         <div className="mb-3 flex flex-wrap items-center gap-3">
-          <select value={filterCity} onChange={(e) => setFilterCity(e.target.value)}>
+          <select value={filterCity} onChange={(e) => setFilterCity(e.target.value)} className="w-44">
             <option value="">Todas las ciudades</option>
-            {Array.from(new Set(scanTargets.map((t) => t.city))).map((city) => (
+            {availableCities.map((city) => (
               <option key={city} value={city}>
                 {city}
               </option>
             ))}
           </select>
-          <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)}>
+          <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} className="w-44">
             <option value="">Todos los rubros</option>
             {categories.map((c) => (
               <option key={c.category_key} value={c.category_key}>
@@ -125,13 +153,22 @@ export default function AuditedSection({ categories, scanTargets }: AuditedSecti
       </div>
 
       <div>
-        <h3 className="mb-3 font-mono text-[11px] uppercase tracking-wider text-parchmentDim">
-          {prospects.length} auditados sin calificar
-        </h3>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <h3 className="font-mono text-[11px] uppercase tracking-wider text-parchmentDim">
+            {visibleProspects.length} auditados sin calificar
+            {totalMatching > prospects.length ? ` (mostrando los primeros ${prospects.length} de ${totalMatching})` : ''}
+          </h3>
+          <input
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+            placeholder="Buscar por nombre..."
+            className="w-48"
+          />
+        </div>
 
         {loading ? (
           <p className="font-mono text-xs text-parchmentDim">Cargando...</p>
-        ) : prospects.length === 0 ? (
+        ) : visibleProspects.length === 0 ? (
           <p className="font-mono text-xs text-parchmentDim">
             No hay pendientes de calificar con estos filtros. Ve a "Buscar" para auditar más.
           </p>
@@ -142,19 +179,23 @@ export default function AuditedSection({ categories, scanTargets }: AuditedSecti
                 <th className="py-2 pl-2">
                   <input
                     type="checkbox"
-                    checked={prospects.length > 0 && prospects.every((p) => selectedIds.has(p.id))}
+                    checked={visibleProspects.length > 0 && visibleProspects.every((p) => selectedIds.has(p.id))}
                     onChange={toggleAll}
                   />
                 </th>
                 <th className="py-2">Negocio</th>
                 <th className="py-2">Ciudad</th>
-                <th className="py-2">Sitio web</th>
-                <th className="py-2">PageSpeed</th>
+                <th className="py-2">
+                  <span title="¿Encontramos un sitio web funcionando para este negocio?">Sitio web</span>
+                </th>
+                <th className="py-2">
+                  <span title="Puntaje de velocidad del sitio (0-100, entre más alto mejor)">PageSpeed</span>
+                </th>
                 <th className="py-2 pr-2">Auditado</th>
               </tr>
             </thead>
             <tbody>
-              {prospects.map((p) => (
+              {visibleProspects.map((p) => (
                 <tr key={p.id} className="border-b border-hairline/60 hover:bg-panel">
                   <td className="py-2 pl-2">
                     <input type="checkbox" checked={selectedIds.has(p.id)} onChange={() => toggleOne(p.id)} />

@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { TargetCategory } from '../types'
 import { useWorkflow } from '../lib/useWorkflow'
 import StatusBadge from './StatusBadge'
+import ContactLink from './ContactLink'
 
 interface ScanTarget {
   id: string
@@ -28,6 +29,8 @@ interface SearchSectionProps {
   scanTargets: ScanTarget[]
 }
 
+const PAGE_LIMIT = 200
+
 export default function SearchSection({ categories, scanTargets }: SearchSectionProps) {
   const [selectedTargetId, setSelectedTargetId] = useState('')
   const [scanCategory, setScanCategory] = useState('')
@@ -37,9 +40,11 @@ export default function SearchSection({ categories, scanTargets }: SearchSection
   // lista aunque haya cientos de prospectos esperando en otra ciudad.
   const [filterCity, setFilterCity] = useState('')
   const [filterCategory, setFilterCategory] = useState('')
+  const [searchText, setSearchText] = useState('')
   const [availableCities, setAvailableCities] = useState<string[]>([])
 
   const [prospects, setProspects] = useState<UnauditedProspect[]>([])
+  const [totalMatching, setTotalMatching] = useState(0)
   const [loading, setLoading] = useState(true)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
@@ -72,20 +77,22 @@ export default function SearchSection({ categories, scanTargets }: SearchSection
     setLoading(true)
     let query = supabase
       .from('prospect_overview')
-      .select('id, name, category, city, country, phone, website')
+      .select('id, name, category, city, country, phone, website', { count: 'exact' })
       .eq('audited', false)
       .order('created_at', { ascending: false })
-      .limit(200)
+      .limit(PAGE_LIMIT)
 
     if (filterCity) query = query.eq('city', filterCity)
     if (filterCategory) query = query.eq('category', filterCategory)
 
-    const { data, error } = await query
+    const { data, error, count } = await query
     if (error) {
       console.error(error)
       setProspects([])
+      setTotalMatching(0)
     } else {
       setProspects(data ?? [])
+      setTotalMatching(count ?? (data ?? []).length)
     }
     setLoading(false)
   }, [filterCity, filterCategory])
@@ -94,6 +101,12 @@ export default function SearchSection({ categories, scanTargets }: SearchSection
     loadProspects()
     loadAvailableCities()
   }, [loadProspects, loadAvailableCities])
+
+  const visibleProspects = useMemo(() => {
+    if (!searchText.trim()) return prospects
+    const needle = searchText.trim().toLowerCase()
+    return prospects.filter((p) => (p.name ?? '').toLowerCase().includes(needle))
+  }, [prospects, searchText])
 
   function toggleOne(id: string) {
     setSelectedIds((prev) => {
@@ -106,8 +119,8 @@ export default function SearchSection({ categories, scanTargets }: SearchSection
 
   function toggleAll() {
     setSelectedIds((prev) => {
-      const allSelected = prospects.length > 0 && prospects.every((p) => prev.has(p.id))
-      return allSelected ? new Set() : new Set(prospects.map((p) => p.id))
+      const allSelected = visibleProspects.length > 0 && visibleProspects.every((p) => prev.has(p.id))
+      return allSelected ? new Set() : new Set(visibleProspects.map((p) => p.id))
     })
   }
 
@@ -138,40 +151,53 @@ export default function SearchSection({ categories, scanTargets }: SearchSection
         <p className="mb-4 text-sm text-parchmentDim">
           Elige dónde y qué rubro escanear para traer negocios nuevos desde OpenStreetMap.
         </p>
-        <div className="mb-3 grid grid-cols-2 gap-3 md:grid-cols-3">
-          <select value={selectedTargetId} onChange={(e) => setSelectedTargetId(e.target.value)}>
-            {scanTargets.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.label}
-              </option>
-            ))}
-          </select>
-          <select value={scanCategory} onChange={(e) => setScanCategory(e.target.value)}>
-            <option value="">Todos los rubros activos</option>
-            {categories.map((c) => (
-              <option key={c.category_key} value={c.category_key}>
-                {c.label_es}
-              </option>
-            ))}
-          </select>
-          <button
-            onClick={runScan}
-            disabled={scan.state.status === 'running'}
-            className="rounded-sm bg-brass px-4 py-2 font-mono text-xs text-ink hover:opacity-90 disabled:opacity-50"
-          >
-            {scan.state.status === 'running' ? 'Buscando...' : 'Correr búsqueda'}
-          </button>
-        </div>
+        {scanTargets.length === 0 ? (
+          <p className="font-mono text-xs text-alert">
+            No hay ciudades activas configuradas. Ábre "configuración" arriba a la derecha para agregar una.
+          </p>
+        ) : (
+          <div className="mb-3 grid grid-cols-2 gap-3 md:grid-cols-3">
+            <select value={selectedTargetId} onChange={(e) => setSelectedTargetId(e.target.value)}>
+              {scanTargets.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+            <select value={scanCategory} onChange={(e) => setScanCategory(e.target.value)}>
+              <option value="">Todos los rubros activos</option>
+              {categories.map((c) => (
+                <option key={c.category_key} value={c.category_key}>
+                  {c.label_es}
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={runScan}
+              disabled={scan.state.status === 'running'}
+              className="rounded-sm bg-brass px-4 py-2 font-mono text-xs text-ink hover:opacity-90 disabled:opacity-50"
+            >
+              {scan.state.status === 'running' ? 'Buscando...' : 'Correr búsqueda'}
+            </button>
+          </div>
+        )}
         <StatusBadge status={scan.state.status} lastRunAt={scan.state.lastRunAt} htmlUrl={scan.state.htmlUrl} />
       </div>
 
       <div>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <h3 className="font-mono text-[11px] uppercase tracking-wider text-parchmentDim">
-            {prospects.length} sin auditar {filterCity ? `en ${filterCity}` : 'en todas las ciudades'}
+            {visibleProspects.length} sin auditar {filterCity ? `en ${filterCity}` : 'en todas las ciudades'}
+            {totalMatching > prospects.length ? ` (mostrando los primeros ${prospects.length} de ${totalMatching})` : ''}
           </h3>
-          <div className="flex gap-2">
-            <select value={filterCity} onChange={(e) => setFilterCity(e.target.value)}>
+          <div className="flex flex-wrap gap-2">
+            <input
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              placeholder="Buscar por nombre..."
+              className="w-48"
+            />
+            <select value={filterCity} onChange={(e) => setFilterCity(e.target.value)} className="w-44">
               <option value="">Todas las ciudades</option>
               {availableCities.map((city) => (
                 <option key={city} value={city}>
@@ -179,7 +205,7 @@ export default function SearchSection({ categories, scanTargets }: SearchSection
                 </option>
               ))}
             </select>
-            <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)}>
+            <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} className="w-44">
               <option value="">Todos los rubros</option>
               {categories.map((c) => (
                 <option key={c.category_key} value={c.category_key}>
@@ -192,9 +218,9 @@ export default function SearchSection({ categories, scanTargets }: SearchSection
 
         {loading ? (
           <p className="font-mono text-xs text-parchmentDim">Cargando...</p>
-        ) : prospects.length === 0 ? (
+        ) : visibleProspects.length === 0 ? (
           <p className="font-mono text-xs text-parchmentDim">
-            No hay prospectos sin auditar con estos filtros. Corre una búsqueda o quita el filtro de ciudad/rubro.
+            No hay prospectos sin auditar con estos filtros. Corre una búsqueda o quita el filtro de ciudad/rubro/nombre.
           </p>
         ) : (
           <table className="w-full text-left text-sm">
@@ -203,7 +229,7 @@ export default function SearchSection({ categories, scanTargets }: SearchSection
                 <th className="py-2 pl-2">
                   <input
                     type="checkbox"
-                    checked={prospects.length > 0 && prospects.every((p) => selectedIds.has(p.id))}
+                    checked={visibleProspects.length > 0 && visibleProspects.every((p) => selectedIds.has(p.id))}
                     onChange={toggleAll}
                   />
                 </th>
@@ -214,7 +240,7 @@ export default function SearchSection({ categories, scanTargets }: SearchSection
               </tr>
             </thead>
             <tbody>
-              {prospects.map((p) => (
+              {visibleProspects.map((p) => (
                 <tr key={p.id} className="border-b border-hairline/60 hover:bg-panel">
                   <td className="py-2 pl-2">
                     <input type="checkbox" checked={selectedIds.has(p.id)} onChange={() => toggleOne(p.id)} />
@@ -223,7 +249,7 @@ export default function SearchSection({ categories, scanTargets }: SearchSection
                   <td className="py-2 font-mono text-xs text-parchmentDim">{p.city}</td>
                   <td className="py-2 font-mono text-xs text-parchmentDim">{p.category}</td>
                   <td className="py-2 pr-2 font-mono text-xs text-parchmentDim tabular">
-                    {p.phone ?? p.website ?? '—'}
+                    <ContactLink phone={p.phone} website={p.website} />
                   </td>
                 </tr>
               ))}
