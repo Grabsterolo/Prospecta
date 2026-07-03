@@ -1,0 +1,35 @@
+name: Auditoria de sitios
+
+on:
+  workflow_dispatch:
+    inputs:
+      batch_size:
+        description: 'Cuántos prospectos auditar en esta corrida'
+        required: false
+        type: string
+  schedule:
+    - cron: '0 14 * * *'
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configurar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Instalar dependencias
+        run: npm install @supabase/supabase-js
+
+      - name: Correr auditoria
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          FIRECRAWL_API_KEY: ${{ secrets.FIRECRAWL_API_KEY }}
+          GOOGLE_PAGESPEED_API_KEY: ${{ secrets.GOOGLE_PAGESPEED_API_KEY }}
+          AUDIT_BATCH_SIZE: ${{ inputs.batch_size }}
+        run: node scripts/audit-prospects.js
