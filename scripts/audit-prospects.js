@@ -21,6 +21,7 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+// Dominios que no cuentan como "sitio propio" del negocio
 const DIRECTORY_DOMAINS = [
   'facebook.com',
   'instagram.com',
@@ -49,8 +50,8 @@ async function auditWithPageSpeed(website) {
   const params = new URLSearchParams({
     url: website,
     strategy: 'mobile',
-    category: 'performance',
   })
+  params.append('category', 'PERFORMANCE')
   if (GOOGLE_PAGESPEED_API_KEY) params.set('key', GOOGLE_PAGESPEED_API_KEY)
 
   const url = `https://www.googleapis.com/pagespeedonline/v5/runPagespeed?${params.toString()}`
@@ -61,6 +62,13 @@ async function auditWithPageSpeed(website) {
   }
 
   const data = await response.json()
+
+  if (!data.lighthouseResult) {
+    // La API respondió 200 pero sin resultado utilizable (sitio bloqueó el
+    // crawler, redirect raro, certificado inválido, etc.)
+    throw new Error(data.error?.message || 'Sin lighthouseResult en la respuesta')
+  }
+
   const perfScore = data.lighthouseResult?.categories?.performance?.score
   const viewportAudit = data.lighthouseResult?.audits?.viewport
   const finalUrl = data.lighthouseResult?.finalUrl || website
@@ -90,6 +98,7 @@ async function searchFirecrawl(query) {
   }
 
   const data = await response.json()
+  // Firecrawl devuelve { success, data: [{ url, title, description }, ...] }
   return (data.data ?? []).map((r) => ({ url: r.url }))
 }
 
@@ -103,11 +112,12 @@ async function auditWithoutWebsite(prospect) {
   )
 
   if (ownSite) {
+    // Encontramos un sitio real que OSM no tenía cargado. Lo guardamos en prospects también.
     await supabase.from('prospects').update({ website: ownSite.url }).eq('id', prospect.id)
     return {
       has_website: true,
       website_verified: true,
-      pagespeed_score: null,
+      pagespeed_score: null, // se audita en la próxima corrida ahora que sabemos que existe
       is_responsive: null,
       has_ssl: null,
       social_activity: socialResult ? socialResult.url : null,
@@ -168,6 +178,7 @@ async function run() {
     } catch (err) {
       console.error(`  Error con ${prospect.name}: ${err.message}`)
       errors++
+      // Guardamos un registro vacío para que no se quede en el loop de pendientes para siempre
       await supabase.from('site_audits').insert({
         prospect_id: prospect.id,
         has_website: Boolean(prospect.website),
