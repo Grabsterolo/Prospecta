@@ -33,13 +33,20 @@ export default function App() {
     setScanTargets((targets ?? []).filter((t: ScanTarget) => t.active))
   }, [])
 
+  const loadTotalCount = useCallback(async () => {
+    const { count } = await supabase.from('prospects').select('*', { count: 'exact', head: true })
+    setTotalCount(count ?? 0)
+  }, [])
+
   useEffect(() => {
     loadOptions()
-    supabase
-      .from('prospects')
-      .select('*', { count: 'exact', head: true })
-      .then(({ count }) => setTotalCount(count ?? 0))
-  }, [loadOptions])
+    loadTotalCount()
+  }, [loadOptions, loadTotalCount])
+
+  // Se refresca cada vez que cambias de sección, para no quedar con un número viejo
+  useEffect(() => {
+    loadTotalCount()
+  }, [section, loadTotalCount])
 
   return (
     <div className="min-h-screen pb-24">
