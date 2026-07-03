@@ -19,3 +19,23 @@ body {
 .tabular {
   font-variant-numeric: tabular-nums;
 }
+
+input,
+select {
+  background-color: #1b242e;
+  border: 1px solid #2b3642;
+  border-radius: 2px;
+  padding: 0.4rem 0.6rem;
+  color: #ede7d9;
+  font-size: 0.875rem;
+}
+
+input:focus,
+select:focus {
+  outline: none;
+  border-color: #c9974c;
+}
+
+input::placeholder {
+  color: #4a555f;
+}
