@@ -1,0 +1,21 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  background-color: #12181f;
+  color: #ede7d9;
+  font-family: 'IBM Plex Sans', sans-serif;
+  background-image:
+    radial-gradient(circle at 1px 1px, rgba(237, 231, 217, 0.04) 1px, transparent 0);
+  background-size: 28px 28px;
+}
+
+::selection {
+  background-color: #c9974c;
+  color: #12181f;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
