@@ -4,7 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       batch_size:
-        description: 'Cuántos prospectos auditar en esta corrida'
+        description: 'Cuántos prospectos auditar en esta corrida (si prospect_ids está vacío)'
+        required: false
+        type: string
+      prospect_ids:
+        description: 'IDs específicos a auditar, separados por coma (ignora batch_size si se llena)'
         required: false
         type: string
   schedule:
@@ -32,4 +36,5 @@ jobs:
           FIRECRAWL_API_KEY: ${{ secrets.FIRECRAWL_API_KEY }}
           GOOGLE_PAGESPEED_API_KEY: ${{ secrets.GOOGLE_PAGESPEED_API_KEY }}
           AUDIT_BATCH_SIZE: ${{ inputs.batch_size }}
+          PROSPECT_IDS: ${{ inputs.prospect_ids }}
         run: node scripts/audit-prospects.js

@@ -50,6 +50,8 @@ export default function App() {
   const [filterCountry, setFilterCountry] = useState('')
   const [filterCity, setFilterCity] = useState('')
   const [filterCategory, setFilterCategory] = useState('')
+  const [filterAudited, setFilterAudited] = useState<'' | 'pending' | 'audited'>('')
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
   // Formulario del paso 1
   const [selectedTargetId, setSelectedTargetId] = useState('')
@@ -100,6 +102,8 @@ export default function App() {
     if (filterCountry) query = query.eq('country', filterCountry)
     if (filterCity) query = query.eq('city', filterCity)
     if (filterCategory) query = query.eq('category', filterCategory)
+    if (filterAudited === 'pending') query = query.eq('audited', false)
+    if (filterAudited === 'audited') query = query.eq('audited', true)
 
     const { data, error } = await query
     if (error) {
@@ -109,7 +113,7 @@ export default function App() {
       setProspects((data as ProspectWithScore[]) ?? [])
     }
     setLoadingProspects(false)
-  }, [filterCountry, filterCity, filterCategory])
+  }, [filterCountry, filterCity, filterCategory, filterAudited])
 
   function pollWorkflow(workflow: 'scan' | 'audit' | 'score', setState: (s: WorkflowState) => void) {
     if (pollRef.current[workflow]) return
@@ -138,6 +142,29 @@ export default function App() {
     })
     // GitHub tarda unos segundos en registrar la corrida antes de que aparezca en la API
     setTimeout(() => pollWorkflow(workflow, setState), 5000)
+  }
+
+  function toggleOne(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function toggleAll() {
+    setSelectedIds((prev) => {
+      const allSelected = prospects.length > 0 && prospects.every((p) => prev.has(p.id))
+      if (allSelected) return new Set()
+      return new Set(prospects.map((p) => p.id))
+    })
+  }
+
+  function auditSelected() {
+    if (selectedIds.size === 0) return
+    triggerWorkflow('audit', { prospect_ids: Array.from(selectedIds).join(',') }, setAuditState)
+    setSelectedIds(new Set())
   }
 
   useEffect(() => {
@@ -264,12 +291,49 @@ export default function App() {
               </option>
             ))}
           </select>
+
+          <div className="ml-2 flex gap-1">
+            {(['', 'pending', 'audited'] as const).map((val) => (
+              <button
+                key={val || 'todos'}
+                onClick={() => setFilterAudited(val)}
+                className={`rounded-sm px-2 py-1 font-mono text-[11px] transition-colors ${
+                  filterAudited === val ? 'bg-panel2 text-brass' : 'text-parchmentDim hover:text-parchment'
+                }`}
+              >
+                {val === '' ? 'todos' : val === 'pending' ? 'sin auditar' : 'auditados'}
+              </button>
+            ))}
+          </div>
         </div>
+
+        {selectedIds.size > 0 && (
+          <div className="mb-3 flex items-center gap-3 rounded-sm border border-brass/40 bg-panel2 px-4 py-2">
+            <span className="font-mono text-xs text-brass">{selectedIds.size} seleccionados</span>
+            <button
+              onClick={auditSelected}
+              className="rounded-sm bg-brass px-3 py-1 font-mono text-xs text-ink hover:opacity-90"
+            >
+              Auditar seleccionados
+            </button>
+            <button
+              onClick={() => setSelectedIds(new Set())}
+              className="font-mono text-xs text-parchmentDim hover:text-parchment"
+            >
+              limpiar selección
+            </button>
+          </div>
+        )}
 
         {loadingProspects ? (
           <p className="font-mono text-xs text-parchmentDim">Cargando resultados...</p>
         ) : (
-          <ProspectTable prospects={prospects} />
+          <ProspectTable
+            prospects={prospects}
+            selectedIds={selectedIds}
+            onToggleOne={toggleOne}
+            onToggleAll={toggleAll}
+          />
         )}
       </main>
 

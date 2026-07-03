@@ -26,6 +26,8 @@ export interface ProspectWithScore extends Prospect {
   score_total: number | null
   suggested_offer: SuggestedOffer
   status: OutreachStatus
+  audit_date: string | null
+  audited: boolean
 }
 
 export interface TargetCategory {

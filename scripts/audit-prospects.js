@@ -134,8 +134,26 @@ async function auditWithoutWebsite(prospect) {
   }
 }
 
-async function run() {
-  const { data: pending, error } = await supabase
+async function resolveProspects() {
+  const explicitIds = process.env.PROSPECT_IDS?.trim()
+
+  if (explicitIds) {
+    const ids = explicitIds.split(',').map((id) => id.trim()).filter(Boolean)
+    console.log(`Modo selectivo: auditando ${ids.length} prospectos elegidos manualmente.`)
+    const { data, error } = await supabase
+      .from('prospects')
+      .select('id, name, city, country, website')
+      .in('id', ids)
+
+    if (error) {
+      console.error('Error cargando prospectos seleccionados:', error.message)
+      process.exit(1)
+    }
+    return data
+  }
+
+  console.log('Modo por lote: usando pending_audit')
+  const { data, error } = await supabase
     .from('pending_audit')
     .select('id, name, city, country, website')
     .limit(BATCH_SIZE)
@@ -144,9 +162,14 @@ async function run() {
     console.error('Error cargando pending_audit:', error.message)
     process.exit(1)
   }
+  return data
+}
+
+async function run() {
+  const pending = await resolveProspects()
 
   if (!pending.length) {
-    console.log('No hay prospectos pendientes de auditar.')
+    console.log('No hay prospectos para auditar.')
     return
   }
 
