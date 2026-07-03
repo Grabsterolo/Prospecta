@@ -142,3 +142,12 @@ input::placeholder {
 .signal-pulse {
   animation: signal-pulse 1.8s ease-out infinite;
 }
+
+input[type='checkbox'] {
+  accent-color: #c9974c;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  cursor: pointer;
+  background-color: #1b242e;
+}

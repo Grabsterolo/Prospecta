@@ -308,11 +308,13 @@ export default function App() {
         </div>
 
         {selectedIds.size > 0 && (
-          <div className="mb-3 flex items-center gap-3 rounded-sm border border-brass/40 bg-panel2 px-4 py-2">
-            <span className="font-mono text-xs text-brass">{selectedIds.size} seleccionados</span>
+          <div className="fixed bottom-6 left-1/2 z-40 flex -translate-x-1/2 items-center gap-4 rounded-sm border border-brass bg-panel px-5 py-3 shadow-[0_4px_20px_rgba(0,0,0,0.5)]">
+            <span className="font-mono text-xs text-brass">
+              {selectedIds.size} prospecto{selectedIds.size > 1 ? 's' : ''} seleccionado{selectedIds.size > 1 ? 's' : ''}
+            </span>
             <button
               onClick={auditSelected}
-              className="rounded-sm bg-brass px-3 py-1 font-mono text-xs text-ink hover:opacity-90"
+              className="rounded-sm bg-brass px-4 py-1.5 font-mono text-xs text-ink hover:opacity-90"
             >
               Auditar seleccionados
             </button>
@@ -320,7 +322,7 @@ export default function App() {
               onClick={() => setSelectedIds(new Set())}
               className="font-mono text-xs text-parchmentDim hover:text-parchment"
             >
-              limpiar selección
+              cancelar
             </button>
           </div>
         )}
