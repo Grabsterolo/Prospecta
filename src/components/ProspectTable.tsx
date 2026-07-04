@@ -27,6 +27,12 @@ const STATUS_OPTIONS: OutreachStatus[] = [
   'descartado',
 ]
 
+interface PendingRow {
+  id: string
+  name: string | null
+  city: string | null
+}
+
 interface ProspectTableProps {
   prospects: ProspectWithScore[]
   selectable?: boolean
@@ -34,6 +40,7 @@ interface ProspectTableProps {
   onToggleOne?: (id: string) => void
   onToggleAll?: () => void
   onStatusChange?: (id: string, status: OutreachStatus) => void
+  pendingRows?: PendingRow[]
 }
 
 export default function ProspectTable({
@@ -43,8 +50,9 @@ export default function ProspectTable({
   onToggleOne,
   onToggleAll,
   onStatusChange,
+  pendingRows = [],
 }: ProspectTableProps) {
-  if (prospects.length === 0) {
+  if (prospects.length === 0 && pendingRows.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-24 text-center">
         <p className="font-display text-lg text-parchment">Sin señales todavía</p>
@@ -79,6 +87,21 @@ export default function ProspectTable({
         </tr>
       </thead>
       <tbody>
+        {pendingRows.map((p) => (
+          <tr key={p.id} className="animate-pulse border-b border-hairline/60 bg-panel2/40">
+            {selectable && (
+              <td className="py-3 pl-2">
+                <input type="checkbox" disabled />
+              </td>
+            )}
+            <td className="py-3 pl-2" />
+            <td className="py-3 text-parchment">{p.name ?? 'Sin nombre'}</td>
+            <td className="py-3 text-parchmentDim">{p.city ?? '—'}</td>
+            <td className="py-3 font-mono text-xs text-brass" colSpan={3}>
+              Calificando...
+            </td>
+          </tr>
+        ))}
         {prospects.map((p) => {
           const status = statusLabels[p.status] ?? statusLabels.nuevo
           return (

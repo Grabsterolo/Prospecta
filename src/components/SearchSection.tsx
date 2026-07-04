@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { TargetCategory } from '../types'
 import { useWorkflow } from '../lib/useWorkflow'
+import { usePending } from '../lib/pendingContext'
 import StatusBadge from './StatusBadge'
 import ContactLink from './ContactLink'
 
@@ -50,6 +51,8 @@ export default function SearchSection({ categories, scanTargets }: SearchSection
 
   const scan = useWorkflow('scan')
   const audit = useWorkflow('audit')
+  const { addPendingAudit } = usePending()
+  const reloadTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     if (scanTargets.length && !selectedTargetId) setSelectedTargetId(scanTargets[0].id)
@@ -102,6 +105,27 @@ export default function SearchSection({ categories, scanTargets }: SearchSection
     loadAvailableCities()
   }, [loadProspects, loadAvailableCities])
 
+  // Tiempo real: mientras corre una búsqueda, los negocios que Overpass va
+  // encontrando se insertan en Supabase en lotes. Nos suscribimos para que
+  // aparezcan solos, sin esperar a que termine todo el escaneo.
+  useEffect(() => {
+    const channel = supabase
+      .channel('search-prospects-inserts')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'prospects' }, () => {
+        if (reloadTimer.current) clearTimeout(reloadTimer.current)
+        reloadTimer.current = setTimeout(() => {
+          loadProspects()
+          loadAvailableCities()
+        }, 500)
+      })
+      .subscribe()
+
+    return () => {
+      if (reloadTimer.current) clearTimeout(reloadTimer.current)
+      supabase.removeChannel(channel)
+    }
+  }, [loadProspects, loadAvailableCities])
+
   const visibleProspects = useMemo(() => {
     if (!searchText.trim()) return prospects
     const needle = searchText.trim().toLowerCase()
@@ -137,6 +161,14 @@ export default function SearchSection({ categories, scanTargets }: SearchSection
 
   function auditSelected() {
     if (selectedIds.size === 0) return
+    const items = prospects
+      .filter((p) => selectedIds.has(p.id))
+      .map((p) => ({ id: p.id, name: p.name, city: p.city, category: p.category }))
+
+    // Apenas se envían, salen de "Buscar" y aparecen "cargando" en "Auditados" —
+    // no hace falta esperar a que termine el workflow completo para verlo.
+    addPendingAudit(items)
+    setProspects((prev) => prev.filter((p) => !selectedIds.has(p.id)))
     audit.trigger({ prospect_ids: Array.from(selectedIds).join(',') }, () => {
       loadProspects()
       loadAvailableCities()
@@ -182,6 +214,12 @@ export default function SearchSection({ categories, scanTargets }: SearchSection
           </div>
         )}
         <StatusBadge status={scan.state.status} lastRunAt={scan.state.lastRunAt} htmlUrl={scan.state.htmlUrl} />
+        {scan.state.status === 'running' && (
+          <p className="mt-2 flex items-center gap-2 font-mono text-[11px] text-parchmentDim">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-brass" />
+            Los negocios van a ir apareciendo abajo a medida que se encuentran...
+          </p>
+        )}
       </div>
 
       <div>

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { TargetCategory } from '../types'
 import { useWorkflow } from '../lib/useWorkflow'
+import { usePending } from '../lib/pendingContext'
 import StatusBadge from './StatusBadge'
 import { timeAgo } from '../lib/time'
 
@@ -33,6 +34,7 @@ export default function AuditedSection({ categories }: AuditedSectionProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
   const score = useWorkflow('score')
+  const { pendingAudit, removePendingAudit, addPendingScore } = usePending()
 
   const loadAvailableCities = useCallback(async () => {
     const { data, error } = await supabase
@@ -80,6 +82,32 @@ export default function AuditedSection({ categories }: AuditedSectionProps) {
     loadAvailableCities()
   }, [loadProspects, loadAvailableCities])
 
+  // Tiempo real: apenas GitHub Actions termina de auditar un prospecto (uno por
+  // uno, no al final del lote), lo quitamos de "cargando" y refrescamos la lista.
+  useEffect(() => {
+    const channel = supabase
+      .channel('audited-site-audits-inserts')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'site_audits' }, (payload) => {
+        const prospectId = payload.new.prospect_id as string
+        removePendingAudit(prospectId)
+        loadProspects()
+        loadAvailableCities()
+      })
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [loadProspects, loadAvailableCities, removePendingAudit])
+
+  const visiblePending = useMemo(
+    () =>
+      pendingAudit.filter(
+        (p) => (!filterCity || p.city === filterCity) && (!filterCategory || p.category === filterCategory),
+      ),
+    [pendingAudit, filterCity, filterCategory],
+  )
+
   const visibleProspects = useMemo(() => {
     if (!searchText.trim()) return prospects
     const needle = searchText.trim().toLowerCase()
@@ -103,6 +131,12 @@ export default function AuditedSection({ categories }: AuditedSectionProps) {
 
   function scoreSelected() {
     if (selectedIds.size === 0) return
+    const items = prospects
+      .filter((p) => selectedIds.has(p.id))
+      .map((p) => ({ id: p.id, name: p.name, city: p.city }))
+
+    addPendingScore(items)
+    setProspects((prev) => prev.filter((p) => !selectedIds.has(p.id)))
     score.trigger({ prospect_ids: Array.from(selectedIds).join(',') }, () => {
       loadProspects()
       loadAvailableCities()
@@ -111,11 +145,16 @@ export default function AuditedSection({ categories }: AuditedSectionProps) {
   }
 
   function scoreAll() {
+    const items = prospects.map((p) => ({ id: p.id, name: p.name, city: p.city }))
+    addPendingScore(items)
+    setProspects([])
     score.trigger({}, () => {
       loadProspects()
       loadAvailableCities()
     })
   }
+
+  const nothingToShow = visibleProspects.length === 0 && visiblePending.length === 0
 
   return (
     <div className="space-y-6">
@@ -143,7 +182,7 @@ export default function AuditedSection({ categories }: AuditedSectionProps) {
           </select>
           <button
             onClick={scoreAll}
-            disabled={score.state.status === 'running'}
+            disabled={score.state.status === 'running' || prospects.length === 0}
             className="rounded-sm bg-panel2 px-3 py-1.5 font-mono text-xs text-parchmentDim hover:text-brass disabled:opacity-50"
           >
             calificar todos los auditados
@@ -168,7 +207,7 @@ export default function AuditedSection({ categories }: AuditedSectionProps) {
 
         {loading ? (
           <p className="font-mono text-xs text-parchmentDim">Cargando...</p>
-        ) : visibleProspects.length === 0 ? (
+        ) : nothingToShow ? (
           <p className="font-mono text-xs text-parchmentDim">
             No hay pendientes de calificar con estos filtros. Ve a "Buscar" para auditar más.
           </p>
@@ -195,6 +234,18 @@ export default function AuditedSection({ categories }: AuditedSectionProps) {
               </tr>
             </thead>
             <tbody>
+              {visiblePending.map((p) => (
+                <tr key={p.id} className="animate-pulse border-b border-hairline/60 bg-panel2/40">
+                  <td className="py-2 pl-2">
+                    <input type="checkbox" disabled />
+                  </td>
+                  <td className="py-2 text-parchment">{p.name ?? 'Sin nombre'}</td>
+                  <td className="py-2 font-mono text-xs text-parchmentDim">{p.city}</td>
+                  <td className="py-2 font-mono text-xs text-brass" colSpan={3}>
+                    Auditando...
+                  </td>
+                </tr>
+              ))}
               {visibleProspects.map((p) => (
                 <tr key={p.id} className="border-b border-hairline/60 hover:bg-panel">
                   <td className="py-2 pl-2">

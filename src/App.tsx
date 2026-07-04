@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from './lib/supabase'
 import { TargetCategory } from './types'
+import { PendingProvider } from './lib/pendingContext'
 import TopBar from './components/TopBar'
 import Nav, { Section } from './components/Nav'
 import SettingsDrawer from './components/SettingsDrawer'
@@ -65,41 +66,43 @@ export default function App() {
   const activeScanTargets = useMemo(() => allScanTargets.filter((t) => t.active), [allScanTargets])
 
   return (
-    <div className="min-h-screen pb-24">
-      <TopBar totalProspects={totalCount} />
-      <Nav active={section} onChange={setSection} onOpenSettings={() => setSettingsOpen(true)} />
+    <PendingProvider>
+      <div className="min-h-screen pb-24">
+        <TopBar totalProspects={totalCount} />
+        <Nav active={section} onChange={setSection} onOpenSettings={() => setSettingsOpen(true)} />
 
-      {PIPELINE_SECTIONS.includes(section) && (
-        <p className="border-b border-hairline bg-panel/40 px-8 py-2 font-mono text-[11px] text-parchmentDim">
-          Cada prospecto avanza solo: <span className="text-parchment">Buscar</span> →{' '}
-          <span className="text-parchment">Auditados</span> → <span className="text-parchment">Calificados</span>.
-          No necesitas moverlo tú mismo.
-        </p>
-      )}
-
-      <main className="px-8 py-6">
-        {loadError && (
-          <div className="mb-6 flex items-center justify-between gap-4 rounded-sm border border-alert/40 bg-alert/10 px-4 py-3 text-sm text-alert">
-            <span>No se pudieron cargar los rubros y ciudades. Revisa tu conexión a internet.</span>
-            <button onClick={loadOptions} className="shrink-0 font-mono text-xs underline hover:text-parchment">
-              reintentar
-            </button>
-          </div>
+        {PIPELINE_SECTIONS.includes(section) && (
+          <p className="border-b border-hairline bg-panel/40 px-8 py-2 font-mono text-[11px] text-parchmentDim">
+            Cada prospecto avanza solo: <span className="text-parchment">Buscar</span> →{' '}
+            <span className="text-parchment">Auditados</span> → <span className="text-parchment">Calificados</span>.
+            No necesitas moverlo tú mismo — apenas lo envías, aparece "cargando" en el siguiente paso.
+          </p>
         )}
 
-        {section === 'overview' && <OverviewPanel categories={allCategories} />}
-        {section === 'search' && <SearchSection categories={activeCategories} scanTargets={activeScanTargets} />}
-        {section === 'audited' && <AuditedSection categories={activeCategories} />}
-        {section === 'scored' && <ScoredSection categories={activeCategories} />}
-      </main>
+        <main className="px-8 py-6">
+          {loadError && (
+            <div className="mb-6 flex items-center justify-between gap-4 rounded-sm border border-alert/40 bg-alert/10 px-4 py-3 text-sm text-alert">
+              <span>No se pudieron cargar los rubros y ciudades. Revisa tu conexión a internet.</span>
+              <button onClick={loadOptions} className="shrink-0 font-mono text-xs underline hover:text-parchment">
+                reintentar
+              </button>
+            </div>
+          )}
 
-      <SettingsDrawer
-        open={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-        categories={allCategories}
-        scanTargets={allScanTargets}
-        onReload={loadOptions}
-      />
-    </div>
+          {section === 'overview' && <OverviewPanel categories={allCategories} />}
+          {section === 'search' && <SearchSection categories={activeCategories} scanTargets={activeScanTargets} />}
+          {section === 'audited' && <AuditedSection categories={activeCategories} />}
+          {section === 'scored' && <ScoredSection categories={activeCategories} />}
+        </main>
+
+        <SettingsDrawer
+          open={settingsOpen}
+          onClose={() => setSettingsOpen(false)}
+          categories={allCategories}
+          scanTargets={allScanTargets}
+          onReload={loadOptions}
+        />
+      </div>
+    </PendingProvider>
   )
 }

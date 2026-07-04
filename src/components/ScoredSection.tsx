@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { OutreachStatus, ProspectWithScore, TargetCategory } from '../types'
+import { usePending } from '../lib/pendingContext'
 import ProspectTable from './ProspectTable'
 
 interface ScoredSectionProps {
@@ -20,6 +21,7 @@ export default function ScoredSection({ categories }: ScoredSectionProps) {
   const [totalMatching, setTotalMatching] = useState(0)
   const [loading, setLoading] = useState(true)
   const [statusError, setStatusError] = useState<string | null>(null)
+  const { pendingScore, removePendingScore } = usePending()
 
   const loadAvailableFilters = useCallback(async () => {
     const { data, error } = await supabase
@@ -65,6 +67,32 @@ export default function ScoredSection({ categories }: ScoredSectionProps) {
     loadProspects()
     loadAvailableFilters()
   }, [loadProspects, loadAvailableFilters])
+
+  // Tiempo real: apenas GitHub Actions califica un prospecto, aparece en la
+  // lista real y desaparece de "cargando" sin esperar a que termine el lote.
+  useEffect(() => {
+    const channel = supabase
+      .channel('scored-scores-inserts')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'scores' }, (payload) => {
+        const prospectId = payload.new.prospect_id as string
+        removePendingScore(prospectId)
+        loadProspects()
+        loadAvailableFilters()
+      })
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [loadProspects, loadAvailableFilters, removePendingScore])
+
+  const visiblePending = useMemo(
+    () =>
+      pendingScore.filter(
+        (p) => (!filterCity || p.city === filterCity) && (searchText.trim() === '' || (p.name ?? '').toLowerCase().includes(searchText.trim().toLowerCase())),
+      ),
+    [pendingScore, filterCity, searchText],
+  )
 
   const visibleProspects = useMemo(() => {
     if (!searchText.trim()) return prospects
@@ -162,7 +190,7 @@ export default function ScoredSection({ categories }: ScoredSectionProps) {
       {loading ? (
         <p className="font-mono text-xs text-parchmentDim">Cargando...</p>
       ) : (
-        <ProspectTable prospects={visibleProspects} onStatusChange={handleStatusChange} />
+        <ProspectTable prospects={visibleProspects} onStatusChange={handleStatusChange} pendingRows={visiblePending} />
       )}
     </div>
   )
